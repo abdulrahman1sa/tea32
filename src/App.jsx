@@ -137,8 +137,8 @@ function App() {
       {view === 'feed' ? (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
           <div style={{ padding: '15px', display: 'flex', gap: '10px' }}>
-            <Tab active={activeTab === 'all'} onClick={() => setActiveTab('all'} icon={<Users size={14} />}>الكل</Tab>
-            <Tab active={activeTab === 'trend'} onClick={() => setActiveTab('trend'} icon={<TrendingUp size={14} />}>التريند 🔥</Tab>
+            <Tab active={activeTab === 'all'} onClick={() => setActiveTab('all')} icon={<Users size={14} />}>الكل</Tab>
+            <Tab active={activeTab === 'trend'} onClick={() => setActiveTab('trend')} icon={<TrendingUp size={14} />}>التريند 🔥</Tab>
           </div>
           <main style={{ padding: '0 15px' }}>
             {posts.map(post => <PostCard key={post.id} post={post} currentUser={user} onDeleted={fetchPosts} onProfileClick={navigateToProfile} onLike={fetchPosts} />)}
