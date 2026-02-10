@@ -4,7 +4,7 @@ import { Camera, Heart, MessageCircle, Plus, Send, Search, Bell, X, Trash2, User
 import { motion, AnimatePresence } from 'framer-motion';
 import { EMOJI_LIST } from './emojis';
 
-// Check if Supabase is properly configured to avoid White Screen
+// Check if Supabase is properly configured
 const isSupabaseReady = !!supabase;
 
 // --- Helpers ---
@@ -107,8 +107,7 @@ function App() {
     return (
       <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: 20, textAlign: 'center', direction: 'rtl' }}>
         <h2 style={{ color: '#8E2B1E' }}>⚠️ خطأ في الإعدادات</h2>
-        <p>مفاتيح Supabase غير موجودة في ملف .env.local</p>
-        <p style={{ fontSize: '0.8rem', color: '#666' }}>يرجى التأكد من إضافة VITE_SUPABASE_URL و VITE_SUPABASE_ANON_KEY</p>
+        <p>مفاتيح Supabase غير موجودة.</p>
       </div>
     );
   }
@@ -359,7 +358,6 @@ function UploadModal({ onClose, onSuccess, myProfile }) {
   </div>);
 }
 
-// Reuse ProfileView logic from previous version...
 function ProfileView({ profileId, currentUser, onBack, onProfileUpdate }) {
   const [profile, setProfile] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
