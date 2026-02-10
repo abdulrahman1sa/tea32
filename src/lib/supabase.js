@@ -1,13 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+// Hardcoded fallback for production (Netlify) to prevent white screen
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://qirdhgzmbkyxnscbhofz.supabase.co"
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_qC4rI5S3Vh2nM3qUnxvavg_bfwTPC-n"
 
-// Prevent crashing if env vars are missing
-export const supabase = (supabaseUrl && supabaseAnonKey)
-    ? createClient(supabaseUrl, supabaseAnonKey)
-    : null;
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-if (!supabase) {
-    console.warn("Supabase client not initialized: Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY");
+if (!supabaseUrl || !supabaseAnonKey) {
+    console.warn("Supabase Config: Using default fallback keys.");
 }
