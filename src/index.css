@@ -1,0 +1,207 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
+
+:root {
+  /* Unified Brand Palette */
+  --primary: #8E2B1E;
+  /* Deep Tea Red */
+  --primary-dark: #681E15;
+  --accent: #D4AF37;
+  /* Royal Gold */
+
+  /* Glass System */
+  --glass-bg: rgba(255, 255, 255, 0.65);
+  --glass-border: rgba(255, 255, 255, 0.8);
+  --glass-blur: blur(25px) saturate(140%);
+
+  /* Text */
+  --text-main: #2A2020;
+  --text-muted: #665A5A;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: 'Cairo', sans-serif;
+  color: var(--text-main);
+  line-height: 1.6;
+  direction: rtl;
+  overflow-x: hidden;
+  /* Unified Background: Soft Gradient */
+  background: linear-gradient(135deg, #FDFBF7 0%, #F5F0EB 100%);
+  min-height: 100vh;
+}
+
+/* --- Glassmorphism Headers & Cards --- */
+.glass {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--glass-border);
+  box-shadow: 0 4px 20px rgba(142, 43, 30, 0.04);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.6);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid white;
+  border-radius: 30px;
+  box-shadow: 0 10px 40px -10px rgba(142, 43, 30, 0.1);
+  overflow: hidden;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.glass-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 50px -15px rgba(142, 43, 30, 0.18);
+}
+
+/* --- Typography --- */
+h1,
+h2,
+h3,
+h4,
+h5 {
+  color: var(--text-main);
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+/* --- Unified Buttons --- */
+button {
+  font-family: 'Cairo', sans-serif;
+  cursor: pointer;
+  border: none;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  color: white;
+  font-weight: 700;
+  border-radius: 20px;
+  padding: 16px 32px;
+  box-shadow: 0 10px 25px rgba(142, 43, 30, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: all 0.2s ease;
+}
+
+.btn-primary:active {
+  transform: scale(0.97);
+}
+
+.icon-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  transition: background 0.2s;
+}
+
+.icon-btn:hover {
+  background: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+/* --- FAB (Floating Action Button) --- */
+.fab {
+  position: fixed;
+  bottom: 25px;
+  left: 25px;
+  width: 65px;
+  height: 65px;
+  border-radius: 22px;
+  background: var(--text-main);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.25);
+  z-index: 500;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.fab:hover {
+  transform: scale(1.08) rotate(5deg);
+}
+
+/* --- Form Inputs --- */
+input,
+textarea {
+  font-family: 'Cairo', sans-serif;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(142, 43, 30, 0.08);
+  /* Unified tint */
+  border-radius: 16px;
+  padding: 16px;
+  font-size: 1rem;
+  color: var(--text-main);
+  width: 100%;
+  transition: all 0.25s ease;
+}
+
+input:focus,
+textarea:focus {
+  outline: none;
+  background: white;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(142, 43, 30, 0.08);
+}
+
+/* --- Background Blobs (Unified) --- */
+.bg-blobs {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.3;
+}
+
+.blob-1 {
+  top: -10%;
+  right: -10%;
+  width: 500px;
+  height: 500px;
+  background: var(--primary);
+  /* Deep Red */
+}
+
+.blob-2 {
+  bottom: -10%;
+  left: -10%;
+  width: 600px;
+  height: 600px;
+  background: var(--accent);
+  /* Gold */
+  opacity: 0.15;
+}
+
+/* Loading */
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  100% {
+    transform: rotate(360deg);
+  }
+}
