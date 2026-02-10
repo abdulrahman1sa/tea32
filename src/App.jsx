@@ -4,6 +4,9 @@ import { Camera, Heart, MessageCircle, Plus, Send, Search, Bell, X, Trash2, User
 import { motion, AnimatePresence } from 'framer-motion';
 import { EMOJI_LIST } from './emojis';
 
+// Check if Supabase is properly configured to avoid White Screen
+const isSupabaseReady = !!supabase;
+
 // --- Helpers ---
 const formatTime = (dateStr) => {
   const date = new Date(dateStr);
@@ -51,6 +54,11 @@ function App() {
   const [searchResults, setSearchResults] = useState([]);
 
   useEffect(() => {
+    if (!isSupabaseReady) {
+      setLoading(false);
+      return;
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       if (session?.user) fetchMyProfile(session.user.id);
@@ -95,6 +103,16 @@ function App() {
     setSearchResults([]);
   };
 
+  if (!isSupabaseReady) {
+    return (
+      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: 20, textAlign: 'center', direction: 'rtl' }}>
+        <h2 style={{ color: '#8E2B1E' }}>⚠️ خطأ في الإعدادات</h2>
+        <p>مفاتيح Supabase غير موجودة في ملف .env.local</p>
+        <p style={{ fontSize: '0.8rem', color: '#666' }}>يرجى التأكد من إضافة VITE_SUPABASE_URL و VITE_SUPABASE_ANON_KEY</p>
+      </div>
+    );
+  }
+
   if (loading) return <LoadingScreen />;
   if (!user) return <LoginPage />;
   if (user && !myProfile) return <ProfileSetup user={user} onComplete={() => fetchMyProfile(user.id)} />;
@@ -119,8 +137,8 @@ function App() {
       {view === 'feed' ? (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
           <div style={{ padding: '15px', display: 'flex', gap: '10px' }}>
-            <Tab active={activeTab === 'all'} onClick={() => setActiveTab('all')} icon={<Users size={14} />}>الكل</Tab>
-            <Tab active={activeTab === 'trend'} onClick={() => setActiveTab('trend')} icon={<TrendingUp size={14} />}>التريند 🔥</Tab>
+            <Tab active={activeTab === 'all'} onClick={() => setActiveTab('all'} icon={<Users size={14} />}>الكل</Tab>
+            <Tab active={activeTab === 'trend'} onClick={() => setActiveTab('trend'} icon={<TrendingUp size={14} />}>التريند 🔥</Tab>
           </div>
           <main style={{ padding: '0 15px' }}>
             {posts.map(post => <PostCard key={post.id} post={post} currentUser={user} onDeleted={fetchPosts} onProfileClick={navigateToProfile} onLike={fetchPosts} />)}
@@ -165,7 +183,7 @@ function App() {
   );
 }
 
-// --- Enhanced PostCard with Verbose Debugging ---
+// --- PostCard ---
 function PostCard({ post, currentUser, onDeleted, onProfileClick, onLike }) {
   const [liked, setLiked] = useState(false);
   const [commentCount, setCommentCount] = useState(0);
@@ -185,53 +203,23 @@ function PostCard({ post, currentUser, onDeleted, onProfileClick, onLike }) {
   };
 
   const deleteProcess = async () => {
-    if (!window.confirm('⚠️ هل أنت متأكد من حذف المنشور؟ هذا سيحذف كل التعليقات المرتبطة به أيضاً.')) return;
-
+    if (!window.confirm('⚠️ حذف المنشور والتعليقات؟')) return;
     setIsDeleting(true);
-    console.log('--- Post Deletion Diagnostic ---');
-    console.log('Post ID:', post.id);
-    console.log('Post Owner ID:', post.user_id);
-    console.log('Current Auth ID:', currentUser.id);
-
     try {
-      // 1. Delete comments first (Explicit error checking)
-      console.log('1. Clearing comments...');
-      const { error: ce } = await supabase.from('comments').delete().eq('post_id', post.id);
-      if (ce) console.warn('Comment cleanup warning:', ce.message);
-
-      // 2. Delete the post record
-      console.log('2. Deleting post record...');
-      const { data, error } = await supabase
-        .from('posts')
-        .delete()
-        .eq('id', post.id)
-        .select();
-
-      if (error) {
-        console.error('Delete Error:', error);
-        alert(`خطأ في قاعدة البيانات: ${error.message}`);
+      await supabase.from('comments').delete().eq('post_id', post.id);
+      const { data, error } = await supabase.from('posts').delete().eq('id', post.id).select();
+      if (!error && data?.length > 0) {
+        const fileName = post.image_url.split('/').pop();
+        if (fileName && !fileName.includes('ui-avatars')) {
+          await supabase.storage.from('tea-moments').remove([fileName]);
+        }
+        onDeleted();
+      } else {
+        alert("فشل الحذف. قد لا تملك الصلاحية.");
         setIsDeleting(false);
-        return;
       }
-
-      if (!data || data.length === 0) {
-        console.error('RLS Blocked the delete request.');
-        alert(`تعذر الحذف فجأة! قد لا تملك الصلاحية الكافية.\n\nتأكد أن هويتك (${currentUser.id.substring(0, 8)}...) تطابق هوية صاحب المنشور.`);
-        setIsDeleting(false);
-        return;
-      }
-
-      // 3. Clean storage
-      const fileName = post.image_url.split('/').pop();
-      if (fileName && !fileName.includes('ui-avatars')) {
-        await supabase.storage.from('tea-moments').remove([fileName]);
-      }
-
-      console.log('✅ Post deleted successfully.');
-      onDeleted();
     } catch (e) {
-      console.error('Fatal Error:', e);
-      alert('حدث خطأ غير متوقع. يرجى مراجعة سجلات المتصفح.');
+      alert('حدث خطأ');
       setIsDeleting(false);
     }
   };
@@ -289,24 +277,10 @@ function CommentsDrawer({ onClose, postId }) {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { alert("يجب تسجيل الدخول أولاً"); return; }
-
     const { data: p } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
-
-    // CRITICAL: Include user_id so RLS can identify the owner later
-    const { error } = await supabase.from('comments').insert([{
-      post_id: postId,
-      content: text,
-      author_name: p?.full_name || 'عضو',
-      user_id: user.id
-    }]);
-
-    if (error) {
-      console.error('Comment error:', error.message);
-      alert("تعذر إضافة الرد. تأكد من وجود عمود user_id في جدول التعليقات.");
-    } else {
-      setText('');
-      fetchComments();
-    }
+    await supabase.from('comments').insert([{ post_id: postId, content: text, author_name: p?.full_name || 'عضو', user_id: user.id }]);
+    setText('');
+    fetchComments();
     setLoading(false);
   };
 
@@ -347,132 +321,7 @@ function CommentsDrawer({ onClose, postId }) {
   );
 }
 
-// --- Profile View ---
-function ProfileView({ profileId, currentUser, onBack, onProfileUpdate }) {
-  const [profile, setProfile] = useState(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [posts, setPosts] = useState([]);
-  const isMe = currentUser.id === profileId;
-
-  useEffect(() => { loadProfile(); }, [profileId]);
-
-  const loadProfile = async () => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', profileId).single();
-    setProfile(data);
-    const { data: p } = await supabase.from('posts').select('*').eq('user_id', profileId).order('created_at', { ascending: false });
-    setPosts(p || []);
-  };
-
-  if (!profile) return <LoadingScreen />;
-
-  return (
-    <div style={{ paddingBottom: '80px' }}>
-      <div style={{ height: '240px', background: profile.cover_url ? `url(${profile.cover_url}) center/cover` : 'linear-gradient(135deg, #8E2B1E, #D4AF37)', position: 'relative' }}>
-        <button onClick={onBack} style={{ position: 'absolute', top: 25, right: 25, background: 'rgba(0,0,0,0.4)', color: 'white', padding: 12, borderRadius: '50%', border: 'none', cursor: 'pointer', backdropFilter: 'blur(8px)' }}><X size={26} /></button>
-      </div>
-      <div style={{ padding: '0 30px', marginTop: '-65px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-          <div style={{ width: 130, height: 130, borderRadius: 40, border: '7px solid #FFFCF9', overflow: 'hidden', background: 'white' }}>
-            <img src={profile.avatar_url || `https://ui-avatars.com/api/?name=${profile.full_name}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          </div>
-          {isMe && <button onClick={() => setIsEditing(true)} style={{ background: '#2D2424', color: 'white', border: 'none', padding: '14px 30px', borderRadius: '18px', fontWeight: '900', fontSize: '0.95rem', cursor: 'pointer' }}>تعديل الملف</button>}
-        </div>
-        <h2 style={{ marginTop: 25, marginBottom: 8, fontSize: '2rem', fontWeight: 900, color: '#2D2424' }}>{profile.full_name}</h2>
-        <p style={{ color: '#555', fontSize: '1.1rem', lineHeight: 1.6, marginBottom: 30 }}>{profile.bio || 'لا توجد نبذة...'} 🍵</p>
-
-        <div style={{ display: 'flex', gap: '40px', padding: '25px', background: 'white', borderRadius: '30px', border: '1px solid #eee' }}>
-          <div style={{ textAlign: 'center' }}><div style={{ fontWeight: '900', fontSize: '1.6rem' }}>{posts.length}</div><div style={{ fontSize: '0.9rem', color: '#999' }}>منشور</div></div>
-          <div style={{ width: 1, background: '#f0f0f0' }} />
-          <div style={{ textAlign: 'center' }}><div style={{ fontWeight: '900', fontSize: '1.6rem' }}>0</div><div style={{ fontSize: '0.9rem', color: '#999' }}>متابع</div></div>
-        </div>
-
-        <div style={{ marginTop: '40px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-          {posts.map(p => <img key={p.id} src={p.image_url} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: '18px' }} />)}
-        </div>
-      </div>
-      <AnimatePresence>
-        {isEditing && <EditProfileModal profile={profile} onClose={() => setIsEditing(false)} onUpdate={() => { loadProfile(); onProfileUpdate(); }} />}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-// --- Edit Profile ---
-function EditProfileModal({ profile, onClose, onUpdate }) {
-  const [name, setName] = useState(profile.full_name);
-  const [bio, setBio] = useState(profile.bio || '');
-  const [loading, setLoading] = useState(false);
-
-  const handleUpdate = async () => {
-    setLoading(true);
-    await supabase.from('profiles').update({ full_name: name, bio }).eq('id', profile.id);
-    onUpdate();
-    onClose();
-  };
-
-  const upload = async (e, type) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setLoading(true);
-    try {
-      const fileName = `${profile.id}/${type}-${Date.now()}.jpg`;
-      await supabase.storage.from('avatars').upload(fileName, file);
-      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
-      const update = type === 'avatar' ? { avatar_url: publicUrl } : { cover_url: publicUrl };
-      await supabase.from('profiles').update(update).eq('id', profile.id);
-      onUpdate();
-    } catch (err) { alert('فشل الرفع'); }
-    setLoading(false);
-  };
-
-  const remove = async (type) => {
-    if (!window.confirm('حذف الصورة؟')) return;
-    setLoading(true);
-    try {
-      const update = type === 'avatar' ? { avatar_url: null } : { cover_url: null };
-      await supabase.from('profiles').update(update).eq('id', profile.id);
-      onUpdate();
-    } catch (err) { alert('فشل الحذف'); }
-    setLoading(false);
-  };
-
-  return (
-    <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} style={{ position: 'fixed', inset: 0, background: 'white', zIndex: 1200, padding: 35, overflowY: 'auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 35 }}>
-        <h3 style={{ margin: 0 }}>تعديل ملفك ✨</h3>
-        <button onClick={onClose} style={{ background: '#f5f5f5', border: 'none', borderRadius: '50%', padding: 10 }}><X /></button>
-      </div>
-
-      <div style={{ marginBottom: 30 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}><b>الغلاف</b>{profile.cover_url && <button onClick={() => remove('cover')} style={{ color: '#ff4d4d', background: 'none', border: 'none', fontWeight: 'bold' }}>حذف</button>}</div>
-        <div onClick={() => document.getElementById('cov').click()} style={{ height: 130, background: '#f9f9f9', borderRadius: 25, position: 'relative', overflow: 'hidden', cursor: 'pointer', border: '2px dashed #eee' }}>
-          {profile.cover_url ? <img src={profile.cover_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <center style={{ padding: 50, color: '#bbb' }}>تغيير الغلاف</center>}
-        </div>
-        <input type="file" id="cov" hidden onChange={e => upload(e, 'cover')} />
-      </div>
-
-      <div style={{ marginBottom: 35 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}><b>الصورة الشخصية</b>{profile.avatar_url && <button onClick={() => remove('avatar')} style={{ color: '#ff4d4d', background: 'none', border: 'none', fontWeight: 'bold' }}>حذف</button>}</div>
-        <img onClick={() => document.getElementById('av').click()} src={profile.avatar_url || `https://ui-avatars.com/api/?name=${profile.full_name}`} style={{ width: 110, height: 110, borderRadius: 35, objectFit: 'cover', cursor: 'pointer', border: '5px solid #f9f9f9' }} />
-        <input type="file" id="av" hidden onChange={e => upload(e, 'avatar')} />
-      </div>
-
-      <div style={{ marginBottom: 25 }}>
-        <label style={{ display: 'block', fontWeight: '900', marginBottom: 10 }}>الاسم</label>
-        <input value={name} onChange={e => setName(e.target.value)} style={{ width: '100%', padding: 18, borderRadius: 20, border: '1px solid #eee', background: '#fafafa', fontSize: '1.1rem' }} />
-      </div>
-
-      <div style={{ marginBottom: 35 }}>
-        <label style={{ display: 'block', fontWeight: '900', marginBottom: 10 }}>النبذة</label>
-        <textarea value={bio} onChange={e => setBio(e.target.value)} style={{ width: '100%', height: 100, padding: 18, borderRadius: 20, border: '1px solid #eee', background: '#fafafa', resize: 'none', fontSize: '1.1rem' }} />
-      </div>
-
-      <button onClick={handleUpdate} disabled={loading} className="btn-primary" style={{ width: '100%', padding: 20, borderRadius: 25, fontSize: '1.2rem', fontWeight: 900 }}>{loading ? 'جاري الحفظ...' : 'حفظ التغييرات ✅'}</button>
-    </motion.div>
-  );
-}
-
-// --- UI Components ---
+// --- Other Components ---
 function Tab({ active, onClick, icon, children }) { return (<button onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 25px', borderRadius: '18px', background: active ? '#8E2B1E' : 'white', color: active ? 'white' : '#666', fontWeight: 900, fontSize: '0.95rem', border: '1px solid #eee', cursor: 'pointer' }}>{icon} {children}</button>); }
 function LoginPage() { return (<div style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#FFFCF9' }}><BackgroundBlobs /><div style={{ width: 120, height: 120, background: 'white', borderRadius: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 40 }}><img src="/logo.png" style={{ width: 75 }} /></div><button onClick={() => supabase.auth.signInWithOAuth({ provider: 'google' })} className="btn-primary" style={{ padding: '22px 50px', fontSize: '1.3rem', fontWeight: 900 }}>دخول بـ Google</button></div>); }
 function LoadingScreen() { return <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 20, background: '#FFFCF9' }}> <div className="spinner" style={{ width: 50, height: 50, border: '5px solid #eee', borderTopColor: '#8E2B1E', borderRadius: '50%' }} /> <b>جاري تحضير المقهى... 🍵</b></div>; }
@@ -492,11 +341,9 @@ function UploadModal({ onClose, onSuccess, myProfile }) {
     setUp(true);
     try {
       const fName = `${Date.now()}.jpg`;
-      const { error: ue } = await supabase.storage.from('tea-moments').upload(fName, file);
-      if (ue) throw ue;
+      await supabase.storage.from('tea-moments').upload(fName, file);
       const { data: { publicUrl } } = supabase.storage.from('tea-moments').getPublicUrl(fName);
-      const { error: ie } = await supabase.from('posts').insert([{ image_url: publicUrl, caption: cap, author_name: myProfile.full_name, user_id: myProfile.id }]);
-      if (ie) throw ie;
+      await supabase.from('posts').insert([{ image_url: publicUrl, caption: cap, author_name: myProfile.full_name, user_id: myProfile.id }]);
       onSuccess();
     } catch (e) { alert('خطأ في النشر'); }
     setUp(false);
@@ -510,6 +357,113 @@ function UploadModal({ onClose, onSuccess, myProfile }) {
     <textarea placeholder="اكتب وصفاً..." value={cap} onChange={e => setCap(e.target.value)} style={{ width: '100%', height: 140, padding: 25, borderRadius: 25, border: '1px solid #eee', background: '#fdfdfd', resize: 'none', fontSize: '1.2rem' }} />
     <button onClick={handle} disabled={up || !preview} className="btn-primary" style={{ width: '100%', marginTop: 35, padding: 22, borderRadius: 30, fontSize: '1.3rem', fontWeight: 900 }}>{up ? 'جاري النشر...' : 'انشر اللحظة ✨'}</button>
   </div>);
+}
+
+// Reuse ProfileView logic from previous version...
+function ProfileView({ profileId, currentUser, onBack, onProfileUpdate }) {
+  const [profile, setProfile] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [posts, setPosts] = useState([]);
+  const isMe = currentUser.id === profileId;
+  useEffect(() => { loadProfile(); }, [profileId]);
+  const loadProfile = async () => {
+    const { data } = await supabase.from('profiles').select('*').eq('id', profileId).single();
+    setProfile(data);
+    const { data: p } = await supabase.from('posts').select('*').eq('user_id', profileId).order('created_at', { ascending: false });
+    setPosts(p || []);
+  };
+  if (!profile) return <LoadingScreen />;
+  return (
+    <div style={{ paddingBottom: '80px' }}>
+      <div style={{ height: '240px', background: profile.cover_url ? `url(${profile.cover_url}) center/cover` : 'linear-gradient(135deg, #8E2B1E, #D4AF37)', position: 'relative' }}>
+        <button onClick={onBack} style={{ position: 'absolute', top: 25, right: 25, background: 'rgba(0,0,0,0.4)', color: 'white', padding: 12, borderRadius: '50%', border: 'none', cursor: 'pointer', backdropFilter: 'blur(8px)' }}><X size={26} /></button>
+      </div>
+      <div style={{ padding: '0 30px', marginTop: '-65px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+          <div style={{ width: 130, height: 130, borderRadius: 40, border: '7px solid #FFFCF9', overflow: 'hidden', background: 'white' }}>
+            <img src={profile.avatar_url || `https://ui-avatars.com/api/?name=${profile.full_name}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </div>
+          {isMe && <button onClick={() => setIsEditing(true)} style={{ background: '#2D2424', color: 'white', border: 'none', padding: '14px 30px', borderRadius: '18px', fontWeight: '900', fontSize: '0.95rem', cursor: 'pointer' }}>تعديل الملف</button>}
+        </div>
+        <h2 style={{ marginTop: 25, marginBottom: 8, fontSize: '2rem', fontWeight: 900, color: '#2D2424' }}>{profile.full_name}</h2>
+        <p style={{ color: '#555', fontSize: '1.1rem', lineHeight: 1.6, marginBottom: 30 }}>{profile.bio || 'لا توجد نبذة...'} 🍵</p>
+        <div style={{ display: 'flex', gap: '40px', padding: '25px', background: 'white', borderRadius: '30px', border: '1px solid #eee' }}>
+          <div style={{ textAlign: 'center' }}><div style={{ fontWeight: '900', fontSize: '1.6rem' }}>{posts.length}</div><div style={{ fontSize: '0.9rem', color: '#999' }}>منشور</div></div>
+          <div style={{ width: 1, background: '#f0f0f0' }} />
+          <div style={{ textAlign: 'center' }}><div style={{ fontWeight: '900', fontSize: '1.6rem' }}>0</div><div style={{ fontSize: '0.9rem', color: '#999' }}>متابع</div></div>
+        </div>
+        <div style={{ marginTop: '40px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+          {posts.map(p => <img key={p.id} src={p.image_url} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: '18px' }} />)}
+        </div>
+      </div>
+      <AnimatePresence>{isEditing && <EditProfileModal profile={profile} onClose={() => setIsEditing(false)} onUpdate={() => { loadProfile(); onProfileUpdate(); }} />}</AnimatePresence>
+    </div>
+  );
+}
+
+function EditProfileModal({ profile, onClose, onUpdate }) {
+  const [name, setName] = useState(profile.full_name);
+  const [bio, setBio] = useState(profile.bio || '');
+  const [loading, setLoading] = useState(false);
+  const handleUpdate = async () => {
+    setLoading(true);
+    await supabase.from('profiles').update({ full_name: name, bio }).eq('id', profile.id);
+    onUpdate();
+    onClose();
+  };
+  const upload = async (e, type) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setLoading(true);
+    try {
+      const fileName = `${profile.id}/${type}-${Date.now()}.jpg`;
+      await supabase.storage.from('avatars').upload(fileName, file);
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
+      const update = type === 'avatar' ? { avatar_url: publicUrl } : { cover_url: publicUrl };
+      await supabase.from('profiles').update(update).eq('id', profile.id);
+      onUpdate();
+    } catch (err) { alert('فشل الرفع'); }
+    setLoading(false);
+  };
+  const remove = async (type) => {
+    if (!window.confirm('حذف الصورة؟')) return;
+    setLoading(true);
+    try {
+      const update = type === 'avatar' ? { avatar_url: null } : { cover_url: null };
+      await supabase.from('profiles').update(update).eq('id', profile.id);
+      onUpdate();
+    } catch (err) { alert('فشل الحذف'); }
+    setLoading(false);
+  };
+  return (
+    <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} style={{ position: 'fixed', inset: 0, background: 'white', zIndex: 1200, padding: 35, overflowY: 'auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 35 }}>
+        <h3 style={{ margin: 0 }}>تعديل ملفك ✨</h3>
+        <button onClick={onClose} style={{ background: '#f5f5f5', border: 'none', borderRadius: '50%', padding: 10 }}><X /></button>
+      </div>
+      <div style={{ marginBottom: 30 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}><b>الغلاف</b>{profile.cover_url && <button onClick={() => remove('cover')} style={{ color: '#ff4d4d', background: 'none', border: 'none', fontWeight: 'bold' }}>حذف</button>}</div>
+        <div onClick={() => document.getElementById('cov').click()} style={{ height: 130, background: '#f9f9f9', borderRadius: 25, position: 'relative', overflow: 'hidden', cursor: 'pointer', border: '2px dashed #eee' }}>
+          {profile.cover_url ? <img src={profile.cover_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <center style={{ padding: 50, color: '#bbb' }}>تغيير الغلاف</center>}
+        </div>
+        <input type="file" id="cov" hidden onChange={e => upload(e, 'cover')} />
+      </div>
+      <div style={{ marginBottom: 35 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}><b>الصورة الشخصية</b>{profile.avatar_url && <button onClick={() => remove('avatar')} style={{ color: '#ff4d4d', background: 'none', border: 'none', fontWeight: 'bold' }}>حذف</button>}</div>
+        <img onClick={() => document.getElementById('av').click()} src={profile.avatar_url || `https://ui-avatars.com/api/?name=${profile.full_name}`} style={{ width: 110, height: 110, borderRadius: 35, objectFit: 'cover', cursor: 'pointer', border: '5px solid #f9f9f9' }} />
+        <input type="file" id="av" hidden onChange={e => upload(e, 'avatar')} />
+      </div>
+      <div style={{ marginBottom: 25 }}>
+        <label style={{ display: 'block', fontWeight: '900', marginBottom: 10 }}>الاسم</label>
+        <input value={name} onChange={e => setName(e.target.value)} style={{ width: '100%', padding: 18, borderRadius: 20, border: '1px solid #eee', background: '#fafafa', fontSize: '1.1rem' }} />
+      </div>
+      <div style={{ marginBottom: 35 }}>
+        <label style={{ display: 'block', fontWeight: '900', marginBottom: 10 }}>النبذة</label>
+        <textarea value={bio} onChange={e => setBio(e.target.value)} style={{ width: '100%', height: 100, padding: 18, borderRadius: 20, border: '1px solid #eee', background: '#fafafa', resize: 'none', fontSize: '1.1rem' }} />
+      </div>
+      <button onClick={handleUpdate} disabled={loading} className="btn-primary" style={{ width: '100%', padding: 20, borderRadius: 25, fontSize: '1.2rem', fontWeight: 900 }}>{loading ? 'جاري الحفظ...' : 'حفظ التغييرات ✅'}</button>
+    </motion.div>
+  );
 }
 
 export default App;
