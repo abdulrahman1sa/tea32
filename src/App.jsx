@@ -332,30 +332,101 @@ function ProfileSetup({ user, onComplete }) {
 }
 function UploadModal({ onClose, onSuccess, myProfile }) {
   const [preview, setPreview] = useState(null);
+  const [fileToUpload, setFileToUpload] = useState(null);
   const [cap, setCap] = useState('');
   const [up, setUp] = useState(false);
-  const handle = async () => {
-    const file = document.getElementById('upf').files[0];
-    if (!file || up) return;
+  const [isCamera, setIsCamera] = useState(false);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    let stream;
+    if (isCamera) {
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+        .then(s => { stream = s; if (videoRef.current) videoRef.current.srcObject = s; })
+        .catch(err => alert("تعذر الوصول للكاميرا"));
+    }
+    return () => { if (stream) stream.getTracks().forEach(track => track.stop()); };
+  }, [isCamera]);
+
+  const capture = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (video && canvas) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0);
+      canvas.toBlob(blob => {
+        setFileToUpload(blob);
+        setPreview(URL.createObjectURL(blob));
+        setIsCamera(false);
+      }, 'image/jpeg');
+    }
+  };
+
+  const handleFile = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setFileToUpload(file);
+      setPreview(URL.createObjectURL(file));
+    }
+  };
+
+  const publish = async () => {
+    if (!fileToUpload || up) return;
     setUp(true);
     try {
       const fName = `${Date.now()}.jpg`;
-      await supabase.storage.from('tea-moments').upload(fName, file);
+      await supabase.storage.from('tea-moments').upload(fName, fileToUpload);
       const { data: { publicUrl } } = supabase.storage.from('tea-moments').getPublicUrl(fName);
       await supabase.from('posts').insert([{ image_url: publicUrl, caption: cap, author_name: myProfile.full_name, user_id: myProfile.id }]);
       onSuccess();
     } catch (e) { alert('خطأ في النشر'); }
     setUp(false);
   };
-  return (<div style={{ position: 'fixed', inset: 0, background: 'white', zIndex: 1200, padding: 30, overflowY: 'auto' }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30 }}><h3 style={{ margin: 0 }}>لحظة جديدة 📸</h3><button onClick={onClose} style={{ background: '#f5f5f5', border: 'none', borderRadius: '50%', padding: 10 }}><X /></button></div>
-    <input type="file" id="upf" hidden onChange={e => e.target.files[0] && setPreview(URL.createObjectURL(e.target.files[0]))} />
-    <div onClick={() => document.getElementById('upf').click()} style={{ width: '100%', height: 400, background: '#f9f9f9', borderRadius: 35, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', cursor: 'pointer', border: '2.5px dashed #ccc', marginBottom: 30 }}>
-      {preview ? <img src={preview} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ textAlign: 'center' }}><ImageIcon size={70} color="#ccc" /><p style={{ color: '#aaa', marginTop: 15 }}>المس هنا لاختيار صورة</p></div>}
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'white', zIndex: 1200, padding: 30, overflowY: 'auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30 }}>
+        <h3 style={{ margin: 0 }}>لحظة جديدة 📸</h3>
+        <button onClick={onClose} style={{ background: '#f5f5f5', border: 'none', borderRadius: '50%', padding: 10 }}><X /></button>
+      </div>
+
+      {!preview && !isCamera && (
+        <div style={{ display: 'flex', gap: 15, marginBottom: 20 }}>
+          <button onClick={() => document.getElementById('upf').click()} className="btn-secondary" style={{ flex: 1, padding: 15, borderRadius: 20, border: '2px dashed #ccc', background: '#f9f9f9', cursor: 'pointer' }}>
+            📂 من الاستوديو
+          </button>
+          <button onClick={() => setIsCamera(true)} className="btn-secondary" style={{ flex: 1, padding: 15, borderRadius: 20, border: '2px solid #8E2B1E', background: 'white', color: '#8E2B1E', fontWeight: 'bold', cursor: 'pointer' }}>
+            📸 تصوير الآن
+          </button>
+        </div>
+      )}
+
+      <input type="file" id="upf" hidden accept="image/*" onChange={handleFile} />
+
+      {isCamera && (
+        <div style={{ position: 'relative', borderRadius: 25, overflow: 'hidden', marginBottom: 20, background: '#000' }}>
+          <video ref={videoRef} autoPlay playsInline style={{ width: '100%', height: 'auto' }} />
+          <button onClick={capture} style={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)', width: 60, height: 60, background: 'white', borderRadius: '50%', border: '4px solid #ddd', padding: 0 }} />
+          <canvas ref={canvasRef} hidden />
+        </div>
+      )}
+
+      {preview && (
+        <div style={{ position: 'relative', borderRadius: 25, overflow: 'hidden', marginBottom: 25 }}>
+          <img src={preview} style={{ width: '100%', maxHeight: 400, objectFit: 'contain', background: '#f5f5f5' }} />
+          <button onClick={() => { setPreview(null); setFileToUpload(null); }} style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', padding: 8 }}><X size={18} /></button>
+        </div>
+      )}
+
+      <textarea placeholder="اكتب وصفاً..." value={cap} onChange={e => setCap(e.target.value)} style={{ width: '100%', height: 140, padding: 25, borderRadius: 25, border: '1px solid #eee', background: '#fdfdfd', resize: 'none', fontSize: '1.2rem', fontFamily: 'inherit' }} />
+
+      <button onClick={publish} disabled={up || !fileToUpload} className="btn-primary" style={{ width: '100%', marginTop: 35, padding: 22, borderRadius: 30, fontSize: '1.3rem', fontWeight: 900, opacity: (up || !fileToUpload) ? 0.5 : 1 }}>
+        {up ? 'جاري النشر...' : 'انشر اللحظة ✨'}
+      </button>
     </div>
-    <textarea placeholder="اكتب وصفاً..." value={cap} onChange={e => setCap(e.target.value)} style={{ width: '100%', height: 140, padding: 25, borderRadius: 25, border: '1px solid #eee', background: '#fdfdfd', resize: 'none', fontSize: '1.2rem' }} />
-    <button onClick={handle} disabled={up || !preview} className="btn-primary" style={{ width: '100%', marginTop: 35, padding: 22, borderRadius: 30, fontSize: '1.3rem', fontWeight: 900 }}>{up ? 'جاري النشر...' : 'انشر اللحظة ✨'}</button>
-  </div>);
+  );
 }
 
 function ProfileView({ profileId, currentUser, onBack, onProfileUpdate }) {
